@@ -1,5 +1,6 @@
 package de.spearmace;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.function.Predicate;
 
@@ -107,7 +108,7 @@ public class SpearMaceClient implements ClientModInitializer {
 			target = null;
 			return;
 		}
-		if (mc.screen != null) {
+		if (isScreenOpen(mc)) {
 			return; // Menue offen: pausieren
 		}
 		if (target == null || !target.isAlive() || target.isRemoved()) {
@@ -177,7 +178,7 @@ public class SpearMaceClient implements ClientModInitializer {
 
 	private static void start(Minecraft mc) {
 		LocalPlayer player = mc.player;
-		if (player == null || mc.level == null || mc.screen != null) {
+		if (player == null || mc.level == null || isScreenOpen(mc)) {
 			return;
 		}
 
@@ -224,6 +225,46 @@ public class SpearMaceClient implements ClientModInitializer {
 	// ------------------------------------------------------------------
 	// Hilfsmethoden
 	// ------------------------------------------------------------------
+
+	/**
+	 * Ist gerade ein Menue (Inventar, Pause, Chat ...) offen? Das Feld "screen" ist in
+	 * 26.2 nicht mehr oeffentlich, deshalb wird es per Reflection gelesen.
+	 */
+	private static Field screenField;
+	private static Method screenGetter;
+	private static boolean screenLookedUp = false;
+
+	private static boolean isScreenOpen(Minecraft mc) {
+		if (!screenLookedUp) {
+			screenLookedUp = true;
+			try {
+				screenField = Minecraft.class.getDeclaredField("screen");
+				screenField.setAccessible(true);
+			} catch (ReflectiveOperationException | RuntimeException e) {
+				screenField = null;
+				for (String name : new String[] { "getScreen", "screen" }) {
+					try {
+						screenGetter = Minecraft.class.getDeclaredMethod(name);
+						screenGetter.setAccessible(true);
+						break;
+					} catch (ReflectiveOperationException | RuntimeException ignored) {
+						screenGetter = null;
+					}
+				}
+			}
+		}
+		try {
+			if (screenField != null) {
+				return screenField.get(mc) != null;
+			}
+			if (screenGetter != null) {
+				return screenGetter.invoke(mc) != null;
+			}
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			// ignorieren
+		}
+		return false;
+	}
 
 	private static boolean isSpear(ItemStack stack) {
 		return BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath().endsWith("_spear");
